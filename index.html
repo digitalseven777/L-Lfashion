@@ -930,8 +930,8 @@
                 </div>
 
                 <div class="admin-tabs">
-                    <button class="tab-btn active" onclick="switchTab('products')">Produtos</button>
-                    <button class="tab-btn" onclick="switchTab('categories')">Categorias</button>
+                    <button class="tab-btn active" onclick="switchTab('products',this)">Produtos</button>
+                    <button class="tab-btn" onclick="switchTab('categories',this)">Categorias</button>
                 </div>
 
                 <!-- Products Tab -->
@@ -1057,236 +1057,175 @@
     </div>
 
     <script>
-        // ─── CONFIG ────────────────────────────────
-        const WHATSAPP_NUMBER  = '5511988834177';
-        const PRODUCTS_KEY     = 'll-products';
-        const CATEGORIES_KEY   = 'll-categories';
-        const ADMIN_SECRET     = 'lladmin2026';
-        const DEFAULT_ADMIN    = { username: 'admin', password: 'llfashion2026' };
+    (function() {
+        // ─── CONFIG ─────────────────────────────────────
+        var WHATSAPP_NUMBER = '5511988834177';
+        var PRODUCTS_KEY    = 'll-products';
+        var CATEGORIES_KEY  = 'll-categories';
+        var ADMIN_SECRET    = 'lladmin2026';
+        var ADMIN_USER      = 'admin';
+        var ADMIN_PASS      = 'llfashion2026';
 
-        // ─── STATE ─────────────────────────────────
-        let isLoggedIn       = false;
-        let products         = [];
-        let categories       = [];
-        let currentCategory  = null;
+        // ─── STATE ──────────────────────────────────────
+        var products   = [];
+        var categories = [];
 
-        // ─── STORAGE (dual: window.storage ↔ localStorage) ───
-        const storage = {
-            async get(key) {
-                try {
-                    if (typeof window.storage !== 'undefined') {
-                        return await window.storage.get(key);
-                    }
-                } catch(e) {}
-                const v = localStorage.getItem(key);
-                return v ? { value: v } : null;
-            },
-            async set(key, value) {
-                try {
-                    if (typeof window.storage !== 'undefined') {
-                        await window.storage.set(key, value);
-                    }
-                } catch(e) {}
-                localStorage.setItem(key, value);
-                return true;
-            }
-        };
+        // ─── STORAGE — só localStorage, síncrono, sem falhas silenciosas ──
+        function save(key, arr) {
+            localStorage.setItem(key, JSON.stringify(arr));
+        }
+        function load(key) {
+            var raw = localStorage.getItem(key);
+            if (!raw) return null;
+            try { return JSON.parse(raw); } catch(e) { return null; }
+        }
 
-        // ─── INIT ──────────────────────────────────
-        async function init() {
-            await loadCategories();
-            await loadProducts();
+        // ─── INIT ───────────────────────────────────────
+        function init() {
+            categories = load(CATEGORIES_KEY) || [
+                { id:1, name:'Calçados',   image:'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600&h=800&fit=crop' },
+                { id:2, name:'Acessórios', image:'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=600&h=800&fit=crop' },
+                { id:3, name:'Moda Praia', image:'https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=600&h=800&fit=crop' }
+            ];
+            products = load(PRODUCTS_KEY) || [
+                { id:1, categoryId:1, name:'Sandália Elegance',  description:'Sandália de bico quadrado com detalhes em strass', price:89.90,  sizes:['35','36','37','38','39'], image:'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=500&h=600&fit=crop', badge:'NOVO' },
+                { id:2, categoryId:2, name:'Relógio Premium',    description:'Relógio dourado com acabamento refinado',          price:159.90, sizes:['Único'],                   image:'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=500&h=600&fit=crop', badge:'DESTAQUE' },
+                { id:3, categoryId:1, name:'Chinelo Glam',       description:'Chinelo sofisticado com aplicações de brilho',     price:69.90,  sizes:['35','36','37','38','39'], image:'https://images.unsplash.com/photo-1560343090-f0409e92791a?w=500&h=600&fit=crop', badge:'' }
+            ];
+            save(CATEGORIES_KEY, categories);
+            save(PRODUCTS_KEY, products);
             renderCategories();
             checkAdminURL();
         }
 
-        // ─── LINK SECRETO: ?admin=<token> ──────────
+        // ─── LINK SECRETO ───────────────────────────────
         function checkAdminURL() {
-            const params = new URLSearchParams(window.location.search);
-            const token  = params.get('admin');
-            if (token && token === ADMIN_SECRET) {
+            var params = new URLSearchParams(window.location.search);
+            if (params.get('admin') === ADMIN_SECRET) {
                 history.replaceState({}, '', window.location.pathname);
                 document.getElementById('loginModal').style.display = 'block';
             }
         }
 
-        // ─── LOAD / SAVE ───────────────────────────
-        async function loadCategories() {
-            try {
-                const r = await storage.get(CATEGORIES_KEY);
-                if (r && r.value) { categories = JSON.parse(r.value); return; }
-            } catch(e) {}
-            categories = [
-                { id: 1, name: 'Calçados',   image: 'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600&h=800&fit=crop' },
-                { id: 2, name: 'Acessórios', image: 'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=600&h=800&fit=crop' },
-                { id: 3, name: 'Moda Praia', image: 'https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=600&h=800&fit=crop' }
-            ];
-            await saveCategories();
-        }
-        async function saveCategories() {
-            await storage.set(CATEGORIES_KEY, JSON.stringify(categories));
-            return true;
-        }
-
-        async function loadProducts() {
-            try {
-                const r = await storage.get(PRODUCTS_KEY);
-                if (r && r.value) { products = JSON.parse(r.value); return; }
-            } catch(e) {}
-            products = [
-                { id:1, categoryId:1, name:'Sandália Elegance',  description:'Sandália de bico quadrado com detalhes em strass', price:89.90,  sizes:['35','36','37','38','39'], image:'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=500&h=600&fit=crop', badge:'NOVO' },
-                { id:2, categoryId:2, name:'Relógio Premium',    description:'Relógio dourado com acabamento refinado',          price:159.90, sizes:['Único'],                   image:'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=500&h=600&fit=crop', badge:'DESTAQUE' },
-                { id:3, categoryId:1, name:'Chinelo Glam',       description:'Chinelo sofisticado com aplicações de brilho',     price:69.90,  sizes:['35','36','37','38','39'], image:'https://images.unsplash.com/photo-1560343090-f0409e92791a?w=500&h=600&fit=crop', badge:'' }
-            ];
-            await saveProducts();
-        }
-        async function saveProducts() {
-            await storage.set(PRODUCTS_KEY, JSON.stringify(products));
-            return true;
-        }
-
-        // ─── IMAGE UPLOAD HELPERS ──────────────────
-        function previewImage(input, previewContainerId) {
-            const file = input.files[0];
+        // ─── IMAGE UPLOAD ───────────────────────────────
+        function previewImage(input, containerId) {
+            var file = input.files[0];
             if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const container = document.getElementById(previewContainerId);
-                const img       = document.getElementById(previewContainerId + 'Img');
-                img.src = e.target.result;
-                container.classList.remove('hidden');
+            var reader = new FileReader();
+            reader.onload = function(ev) {
+                document.getElementById(containerId + 'Img').src = ev.target.result;
+                document.getElementById(containerId).classList.remove('hidden');
             };
             reader.readAsDataURL(file);
         }
 
-        function removePreview(previewContainerId, inputId) {
-            document.getElementById(previewContainerId).classList.add('hidden');
-            document.getElementById(previewContainerId + 'Img').src = '';
+        function removePreview(containerId, inputId) {
+            document.getElementById(containerId + 'Img').removeAttribute('src');
+            document.getElementById(containerId).classList.add('hidden');
             document.getElementById(inputId).value = '';
         }
 
-        function getImageData(previewImgId) {
-            const img = document.getElementById(previewImgId);
-            return img && img.src ? img.src : '';
+        // Retorna o src da imagem ou string vazia
+        function getPreviewSrc(containerId) {
+            var img = document.getElementById(containerId + 'Img');
+            var src = img ? img.getAttribute('src') : '';
+            return src || '';
         }
 
-        function setupDragDrop(areaId, inputId, previewId) {
-            const area  = document.getElementById(areaId);
-            const input = document.getElementById(inputId);
-            if (!area) return;
-            area.addEventListener('dragover', function(e) {
-                e.preventDefault();
-                area.classList.add('dragover');
-            });
-            area.addEventListener('dragleave', function(e) {
-                e.preventDefault();
-                area.classList.remove('dragover');
-            });
+        function setupDragDrop(areaId, inputId, containerId) {
+            var area  = document.getElementById(areaId);
+            var input = document.getElementById(inputId);
+            if (!area || !input) return;
+            area.addEventListener('dragover',  function(e){ e.preventDefault(); area.classList.add('dragover'); });
+            area.addEventListener('dragleave', function(e){ e.preventDefault(); area.classList.remove('dragover'); });
             area.addEventListener('drop', function(e) {
-                e.preventDefault();
-                area.classList.remove('dragover');
-                const file = e.dataTransfer.files[0];
-                if (file && file.type.startsWith('image/')) {
-                    input.files = e.dataTransfer.files;
-                    previewImage(input, previewId);
+                e.preventDefault(); area.classList.remove('dragover');
+                var f = e.dataTransfer.files[0];
+                if (f && f.type.startsWith('image/')) {
+                    var dt = new DataTransfer(); dt.items.add(f);
+                    input.files = dt.files;
+                    previewImage(input, containerId);
                 }
             });
         }
 
-        // ─── RENDER PUBLIC ─────────────────────────
+        // ─── RENDER PÚBLICO ─────────────────────────────
         function renderCategories() {
-            const grid = document.getElementById('categoriesGrid');
-            if (!categories.length) {
-                grid.innerHTML = '<div class="empty-state"><h3>Nenhuma categoria criada</h3></div>';
-                return;
-            }
-            grid.innerHTML = categories.map(cat => {
-                const count = products.filter(p => p.categoryId === cat.id).length;
-                return `
-                    <div class="category-card" onclick="showCategory(${cat.id})">
-                        <img src="${cat.image}" alt="${cat.name}" class="category-image"
-                             onerror="this.style.background='linear-gradient(135deg,#E89BA8,#F4B4C0)'">
-                        <div class="category-overlay">
-                            <h3 class="category-name">${cat.name}</h3>
-                            <p class="category-count">${count} produto${count !== 1 ? 's' : ''}</p>
-                        </div>
-                    </div>`;
-            }).join('');
+            var grid = document.getElementById('categoriesGrid');
+            if (!categories.length) { grid.innerHTML = '<div class="empty-state"><h3>Nenhuma categoria criada</h3></div>'; return; }
+            var h = '';
+            categories.forEach(function(cat) {
+                var count = 0;
+                products.forEach(function(p) { if (p.categoryId === cat.id) count++; });
+                h += '<div class="category-card" onclick="showCategory('+cat.id+')">'
+                   + '<img src="'+cat.image+'" alt="'+cat.name+'" class="category-image" onerror="this.style.background=\'linear-gradient(135deg,#E89BA8,#F4B4C0)\'">'
+                   + '<div class="category-overlay">'
+                   +   '<h3 class="category-name">'+cat.name+'</h3>'
+                   +   '<p class="category-count">'+count+' produto'+(count!==1?'s':'')+'</p>'
+                   + '</div></div>';
+            });
+            grid.innerHTML = h;
         }
 
-        function showCategory(categoryId) {
-            currentCategory = categories.find(c => c.id === categoryId);
-            if (!currentCategory) return;
+        function showCategory(catId) {
+            var cat = categories.find(function(c){ return c.id === catId; });
+            if (!cat) return;
             document.getElementById('homeView').classList.add('hidden');
             document.getElementById('productsView').classList.remove('hidden');
-            document.getElementById('currentCategoryName').textContent = currentCategory.name;
-            renderCategoryProducts(categoryId);
-        }
+            document.getElementById('currentCategoryName').textContent = cat.name;
 
-        function renderCategoryProducts(categoryId) {
-            const grid = document.getElementById('productsGrid');
-            const list = products.filter(p => p.categoryId === categoryId);
-            if (!list.length) {
-                grid.innerHTML = '<div class="empty-state"><h3>Nenhum produto nesta categoria ainda</h3></div>';
-                return;
-            }
-            grid.innerHTML = list.map(product => `
-                <div class="product-card">
-                    <div class="product-image-container">
-                        <img src="${product.image}" alt="${product.name}" class="product-image"
-                             onerror="this.style.background='linear-gradient(135deg,#E89BA8,#F4B4C0)'">
-                        ${product.badge ? '<div class="product-badge">'+product.badge+'</div>' : ''}
-                    </div>
-                    <div class="product-info">
-                        <h3 class="product-name">${product.name}</h3>
-                        <p class="product-description">${product.description}</p>
-                        <div class="product-sizes">
-                            ${product.sizes.map(s => '<span class="size-badge">'+s+'</span>').join('')}
-                        </div>
-                        <div class="product-footer">
-                            <div class="product-price">R$ ${product.price.toFixed(2)}</div>
-                            <button class="whatsapp-btn" onclick="sendWhatsApp(${JSON.stringify(product.name)}, ${product.price})">
-                                <svg class="whatsapp-icon" fill="white" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
-                                Comprar
-                            </button>
-                        </div>
-                    </div>
-                </div>`).join('');
+            var grid = document.getElementById('productsGrid');
+            var list = products.filter(function(p){ return p.categoryId === catId; });
+            if (!list.length) { grid.innerHTML = '<div class="empty-state"><h3>Nenhum produto nesta categoria ainda</h3></div>'; return; }
+
+            var wpSvg = '<svg class="whatsapp-icon" fill="white" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>';
+            var h = '';
+            list.forEach(function(p) {
+                var sizesH = ''; p.sizes.forEach(function(s){ sizesH += '<span class="size-badge">'+s+'</span>'; });
+                h += '<div class="product-card">'
+                   + '<div class="product-image-container">'
+                   +   '<img src="'+p.image+'" alt="'+p.name+'" class="product-image" onerror="this.style.background=\'linear-gradient(135deg,#E89BA8,#F4B4C0)\'">'
+                   +   (p.badge ? '<div class="product-badge">'+p.badge+'</div>' : '')
+                   + '</div><div class="product-info">'
+                   +   '<h3 class="product-name">'+p.name+'</h3>'
+                   +   '<p class="product-description">'+p.description+'</p>'
+                   +   '<div class="product-sizes">'+sizesH+'</div>'
+                   +   '<div class="product-footer">'
+                   +     '<div class="product-price">R$ '+p.price.toFixed(2)+'</div>'
+                   +     '<button class="whatsapp-btn" onclick="sendWhatsApp(\''+p.name.replace(/'/g,"\\'")+'\','+p.price+')">'+wpSvg+' Comprar</button>'
+                   +   '</div></div></div>';
+            });
+            grid.innerHTML = h;
         }
 
         function showHome() {
             document.getElementById('homeView').classList.remove('hidden');
             document.getElementById('productsView').classList.add('hidden');
-            currentCategory = null;
         }
 
         function sendWhatsApp(name, price) {
-            const msg = 'Olá! Tenho interesse no produto:\n\n*'+name+'*\nValor: R$ '+price.toFixed(2)+'\n\nGostaria de mais informações!';
+            var msg = 'Olá! Tenho interesse no produto:\n\n*'+name+'*\nValor: R$ '+price.toFixed(2)+'\n\nGostaria de mais informações!';
             window.open('https://wa.me/'+WHATSAPP_NUMBER+'?text='+encodeURIComponent(msg), '_blank');
         }
 
-        // ─── LOGIN / ADMIN ─────────────────────────
-        function showLoginModal() {
-            document.getElementById('loginModal').style.display = 'block';
-        }
+        // ─── LOGIN ──────────────────────────────────────
+        function showLoginModal() { document.getElementById('loginModal').style.display = 'block'; }
 
         function handleLogin(e) {
             e.preventDefault();
-            const user = document.getElementById('username').value;
-            const pass = document.getElementById('password').value;
-            if (user === DEFAULT_ADMIN.username && pass === DEFAULT_ADMIN.password) {
-                isLoggedIn = true;
+            if (document.getElementById('username').value === ADMIN_USER &&
+                document.getElementById('password').value === ADMIN_PASS) {
                 closeModal('loginModal');
                 showAdminPanel();
-            } else {
-                alert('Usuário ou senha incorretos!');
-            }
+            } else { alert('Usuário ou senha incorretos!'); }
         }
 
+        // ─── ADMIN ──────────────────────────────────────
         function showAdminPanel() {
             document.getElementById('homeView').classList.add('hidden');
             document.getElementById('productsView').classList.add('hidden');
             document.getElementById('adminPanel').classList.remove('hidden');
+            // Recarrega produtos da memória (sempre atualizado)
             renderAdminProducts();
             renderAdminCategories();
             updateCategorySelect();
@@ -1295,75 +1234,63 @@
         }
 
         function logout() {
-            isLoggedIn = false;
             document.getElementById('homeView').classList.remove('hidden');
             document.getElementById('adminPanel').classList.add('hidden');
             document.getElementById('username').value = '';
             document.getElementById('password').value = '';
         }
 
-        // ─── ADMIN TABS ────────────────────────────
-        function switchTab(tab) {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
+        function switchTab(tab, btn) {
+            document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+            btn.classList.add('active');
             document.getElementById('productsTab').classList.toggle('hidden',   tab !== 'products');
             document.getElementById('categoriesTab').classList.toggle('hidden', tab !== 'categories');
         }
 
         function updateCategorySelect() {
-            const sel = document.getElementById('productCategory');
-            sel.innerHTML = '<option value="">Selecione uma categoria</option>' +
-                categories.map(c => '<option value="'+c.id+'">'+c.name+'</option>').join('');
+            var sel = document.getElementById('productCategory');
+            var h = '<option value="">Selecione uma categoria</option>';
+            categories.forEach(function(c){ h += '<option value="'+c.id+'">'+c.name+'</option>'; });
+            sel.innerHTML = h;
         }
 
-        // ─── RENDER ADMIN ──────────────────────────
+        // ─── RENDER ADMIN ───────────────────────────────
         function renderAdminProducts() {
-            const list = document.getElementById('adminProductList');
-            if (!products.length) {
-                list.innerHTML = '<div class="empty-state"><h3>Nenhum produto cadastrado</h3></div>';
-                return;
-            }
-            list.innerHTML = products.map(p => {
-                const cat = categories.find(c => c.id === p.categoryId);
-                return `
-                    <div class="product-item">
-                        <img src="${p.image}" alt="${p.name}" onerror="this.style.background='#E89BA8'">
-                        <div class="product-item-info">
-                            <h4>${p.name}</h4>
-                            <p>${cat ? cat.name : 'Sem categoria'} • R$ ${p.price.toFixed(2)}</p>
-                        </div>
-                        <div class="product-actions">
-                            <button class="btn-small btn-edit"   onclick="editProduct(${p.id})">Editar</button>
-                            <button class="btn-small btn-delete" onclick="deleteProduct(${p.id})">Excluir</button>
-                        </div>
-                    </div>`;
-            }).join('');
+            var el = document.getElementById('adminProductList');
+            if (!products.length) { el.innerHTML = '<div class="empty-state"><h3>Nenhum produto cadastrado</h3></div>'; return; }
+            var h = '';
+            products.forEach(function(p) {
+                var cat = categories.find(function(c){ return c.id === p.categoryId; });
+                h += '<div class="product-item">'
+                   + '<img src="'+p.image+'" alt="'+p.name+'" onerror="this.style.background=\'#E89BA8\'">'
+                   + '<div class="product-item-info"><h4>'+p.name+'</h4>'
+                   +   '<p>'+(cat?cat.name:'Sem categoria')+' • R$ '+p.price.toFixed(2)+'</p></div>'
+                   + '<div class="product-actions">'
+                   +   '<button class="btn-small btn-edit" onclick="editProduct('+p.id+')">Editar</button>'
+                   +   '<button class="btn-small btn-delete" onclick="deleteProduct('+p.id+')">Excluir</button>'
+                   + '</div></div>';
+            });
+            el.innerHTML = h;
         }
 
         function renderAdminCategories() {
-            const list = document.getElementById('adminCategoryList');
-            if (!categories.length) {
-                list.innerHTML = '<div class="empty-state"><h3>Nenhuma categoria cadastrada</h3></div>';
-                return;
-            }
-            list.innerHTML = categories.map(c => {
-                const count = products.filter(p => p.categoryId === c.id).length;
-                return `
-                    <div class="product-item">
-                        <img src="${c.image}" alt="${c.name}" onerror="this.style.background='#E89BA8'">
-                        <div class="product-item-info">
-                            <h4>${c.name}</h4>
-                            <p>${count} produto${count !== 1 ? 's' : ''}</p>
-                        </div>
-                        <div class="product-actions">
-                            <button class="btn-small btn-edit"   onclick="editCategory(${c.id})">Editar</button>
-                            <button class="btn-small btn-delete" onclick="deleteCategory(${c.id})">Excluir</button>
-                        </div>
-                    </div>`;
-            }).join('');
+            var el = document.getElementById('adminCategoryList');
+            if (!categories.length) { el.innerHTML = '<div class="empty-state"><h3>Nenhuma categoria cadastrada</h3></div>'; return; }
+            var h = '';
+            categories.forEach(function(c) {
+                var count = 0; products.forEach(function(p){ if(p.categoryId===c.id) count++; });
+                h += '<div class="product-item">'
+                   + '<img src="'+c.image+'" alt="'+c.name+'" onerror="this.style.background=\'#E89BA8\'">'
+                   + '<div class="product-item-info"><h4>'+c.name+'</h4><p>'+count+' produto'+(count!==1?'s':'')+'</p></div>'
+                   + '<div class="product-actions">'
+                   +   '<button class="btn-small btn-edit" onclick="editCategory('+c.id+')">Editar</button>'
+                   +   '<button class="btn-small btn-delete" onclick="deleteCategory('+c.id+')">Excluir</button>'
+                   + '</div></div>';
+            });
+            el.innerHTML = h;
         }
 
-        // ─── PRODUCT CRUD ──────────────────────────
+        // ─── PRODUTO CRUD ───────────────────────────────
         function showAddProductModal() {
             document.getElementById('productModalTitle').textContent = 'Adicionar Produto';
             document.getElementById('editProductId').value = '';
@@ -1378,109 +1305,161 @@
         }
 
         function editProduct(id) {
-            const p = products.find(x => x.id === id);
+            var p = products.find(function(x){ return x.id === id; });
             if (!p) return;
             document.getElementById('productModalTitle').textContent = 'Editar Produto';
-            document.getElementById('editProductId').value   = id;
+            document.getElementById('editProductId').value   = String(p.id);
             document.getElementById('productCategory').value = p.categoryId;
             document.getElementById('productName').value      = p.name;
             document.getElementById('productDescription').value = p.description;
             document.getElementById('productPrice').value    = p.price;
             document.getElementById('productSizes').value    = p.sizes.join(', ');
             document.getElementById('productBadge').value    = p.badge || '';
-            // mostra preview da imagem atual
-            document.getElementById('productImagePreviewImg').src = p.image;
+            document.getElementById('productImagePreviewImg').setAttribute('src', p.image);
             document.getElementById('productImagePreview').classList.remove('hidden');
             document.getElementById('productModal').style.display = 'block';
         }
 
-        async function handleProductSubmit(e) {
+        function handleProductSubmit(e) {
             e.preventDefault();
-            const id     = document.getElementById('editProductId').value;
-            const imgSrc = getImageData('productImagePreviewImg');
+            var idRaw  = document.getElementById('editProductId').value;
+            var imgSrc = getPreviewSrc('productImagePreview');
+
             if (!imgSrc) { alert('Por favor, adicione uma imagem do produto.'); return; }
 
-            const data = {
+            var data = {
                 categoryId:  parseInt(document.getElementById('productCategory').value),
                 name:        document.getElementById('productName').value,
                 description: document.getElementById('productDescription').value,
                 price:       parseFloat(document.getElementById('productPrice').value),
-                sizes:       document.getElementById('productSizes').value.split(',').map(s => s.trim()).filter(Boolean),
+                sizes:       document.getElementById('productSizes').value.split(',').map(function(s){ return s.trim(); }).filter(Boolean),
                 image:       imgSrc,
                 badge:       document.getElementById('productBadge').value
             };
 
-            if (id) {
-                const idx = products.findIndex(p => p.id === parseInt(id));
-                if (idx !== -1) products[idx] = { ...products[idx], ...data };
+            if (idRaw) {
+                // Editar
+                var numId = parseInt(idRaw);
+                for (var i = 0; i < products.length; i++) {
+                    if (products[i].id === numId) {
+                        products[i] = { id: numId, categoryId: data.categoryId, name: data.name, description: data.description, price: data.price, sizes: data.sizes, image: data.image, badge: data.badge };
+                        break;
+                    }
+                }
             } else {
-                products.push({ id: Date.now(), ...data });
+                // Novo
+                data.id = Date.now();
+                products.push(data);
             }
 
-            if (await saveProducts()) { renderCategories(); renderAdminProducts(); closeModal('productModal'); }
+            // Salva + atualiza tela + fecha modal — sempre executa, sem condicional
+            save(PRODUCTS_KEY, products);
+            renderCategories();
+            renderAdminProducts();
+            closeModal('productModal');
         }
 
-        async function deleteProduct(id) {
+        function deleteProduct(id) {
             if (!confirm('Excluir este produto?')) return;
-            products = products.filter(p => p.id !== id);
-            if (await saveProducts()) { renderCategories(); renderAdminProducts(); }
+            products = products.filter(function(p){ return p.id !== id; });
+            save(PRODUCTS_KEY, products);
+            renderCategories();
+            renderAdminProducts();
         }
 
-        // ─── CATEGORY CRUD ─────────────────────────
+        // ─── CATEGORIA CRUD ─────────────────────────────
         function showAddCategoryModal() {
             document.getElementById('categoryModalTitle').textContent = 'Adicionar Categoria';
             document.getElementById('editCategoryId').value = '';
-            document.getElementById('categoryName').value   = '';
+            document.getElementById('categoryName').value = '';
             removePreview('categoryImagePreview','categoryImageFile');
             document.getElementById('categoryModal').style.display = 'block';
         }
 
         function editCategory(id) {
-            const c = categories.find(x => x.id === id);
+            var c = categories.find(function(x){ return x.id === id; });
             if (!c) return;
             document.getElementById('categoryModalTitle').textContent = 'Editar Categoria';
-            document.getElementById('editCategoryId').value = id;
+            document.getElementById('editCategoryId').value = String(c.id);
             document.getElementById('categoryName').value   = c.name;
-            document.getElementById('categoryImagePreviewImg').src = c.image;
+            document.getElementById('categoryImagePreviewImg').setAttribute('src', c.image);
             document.getElementById('categoryImagePreview').classList.remove('hidden');
             document.getElementById('categoryModal').style.display = 'block';
         }
 
-        async function handleCategorySubmit(e) {
+        function handleCategorySubmit(e) {
             e.preventDefault();
-            const id     = document.getElementById('editCategoryId').value;
-            const imgSrc = getImageData('categoryImagePreviewImg');
+            var idRaw  = document.getElementById('editCategoryId').value;
+            var imgSrc = getPreviewSrc('categoryImagePreview');
+
             if (!imgSrc) { alert('Por favor, adicione uma imagem da categoria.'); return; }
 
-            const data = {
+            var data = {
                 name:  document.getElementById('categoryName').value,
                 image: imgSrc
             };
 
-            if (id) {
-                const idx = categories.findIndex(c => c.id === parseInt(id));
-                if (idx !== -1) categories[idx] = { ...categories[idx], ...data };
+            if (idRaw) {
+                var numId = parseInt(idRaw);
+                for (var i = 0; i < categories.length; i++) {
+                    if (categories[i].id === numId) { categories[i].name = data.name; categories[i].image = data.image; break; }
+                }
             } else {
-                categories.push({ id: Date.now(), ...data });
+                data.id = Date.now();
+                categories.push(data);
             }
 
-            if (await saveCategories()) { renderCategories(); renderAdminCategories(); updateCategorySelect(); closeModal('categoryModal'); }
+            save(CATEGORIES_KEY, categories);
+            renderCategories();
+            renderAdminCategories();
+            updateCategorySelect();
+            closeModal('categoryModal');
         }
 
-        async function deleteCategory(id) {
-            const count = products.filter(p => p.categoryId === id).length;
+        function deleteCategory(id) {
+            var count = 0; products.forEach(function(p){ if(p.categoryId===id) count++; });
             if (count > 0) { alert('Essa categoria tem '+count+' produto(s). Remova-os primeiro.'); return; }
             if (!confirm('Excluir esta categoria?')) return;
-            categories = categories.filter(c => c.id !== id);
-            if (await saveCategories()) { renderCategories(); renderAdminCategories(); updateCategorySelect(); }
+            categories = categories.filter(function(c){ return c.id !== id; });
+            save(CATEGORIES_KEY, categories);
+            renderCategories();
+            renderAdminCategories();
+            updateCategorySelect();
         }
 
-        // ─── MODAL ─────────────────────────────────
+        // ─── MODAL ──────────────────────────────────────
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-        window.onclick = function(e) { if (e.target.classList.contains('modal')) e.target.style.display = 'none'; }
 
-        // ─── GO ────────────────────────────────────
+        // Fecha modal apenas se o click foi DIRETAMENTE no backdrop (não em filho)
+        document.addEventListener('click', function(e) {
+            if (e.target.classList && e.target.classList.contains('modal')) {
+                e.target.style.display = 'none';
+            }
+        });
+
+        // ─── EXPÕE NO GLOBAL (para chamadas inline no HTML) ──
+        window.showHome             = showHome;
+        window.showCategory         = showCategory;
+        window.sendWhatsApp         = sendWhatsApp;
+        window.showLoginModal       = showLoginModal;
+        window.handleLogin          = handleLogin;
+        window.logout               = logout;
+        window.switchTab            = switchTab;
+        window.showAddProductModal  = showAddProductModal;
+        window.editProduct          = editProduct;
+        window.handleProductSubmit  = handleProductSubmit;
+        window.deleteProduct        = deleteProduct;
+        window.showAddCategoryModal = showAddCategoryModal;
+        window.editCategory         = editCategory;
+        window.handleCategorySubmit = handleCategorySubmit;
+        window.deleteCategory       = deleteCategory;
+        window.closeModal           = closeModal;
+        window.previewImage         = previewImage;
+        window.removePreview        = removePreview;
+
+        // ─── GO ─────────────────────────────────────────
         init();
+    })();
     </script>
 </body>
 </html>
