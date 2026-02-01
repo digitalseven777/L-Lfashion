@@ -1058,7 +1058,9 @@
 
     <script>
     (function() {
-        // ─── CONFIG ─────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  CONFIG
+        // ═══════════════════════════════════════════════════════
         var WHATSAPP_NUMBER = '5511988834177';
         var PRODUCTS_KEY    = 'll-products';
         var CATEGORIES_KEY  = 'll-categories';
@@ -1066,39 +1068,91 @@
         var ADMIN_USER      = 'admin';
         var ADMIN_PASS      = 'llfashion2026';
 
-        // ─── STATE ──────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  STATE
+        // ═══════════════════════════════════════════════════════
         var products   = [];
         var categories = [];
 
-        // ─── STORAGE — só localStorage, síncrono, sem falhas silenciosas ──
-        function save(key, arr) {
-            localStorage.setItem(key, JSON.stringify(arr));
-        }
-        function load(key) {
-            var raw = localStorage.getItem(key);
-            if (!raw) return null;
-            try { return JSON.parse(raw); } catch(e) { return null; }
+        // ═══════════════════════════════════════════════════════
+        //  STORAGE — compartilhado entre todos os dispositivos
+        //  Usa window.storage(shared:true) quando disponível (ambiente Claude)
+        //  Faz fallback para localStorage quando não (arquivo local)
+        // ═══════════════════════════════════════════════════════
+        var useSharedStorage = (typeof window.storage !== 'undefined');
+
+        async function dbSave(key, data) {
+            var json = JSON.stringify(data);
+            if (useSharedStorage) {
+                try {
+                    await window.storage.set(key, json, true); // true = shared
+                    return true;
+                } catch(e) {
+                    console.warn('shared storage save failed, fallback localStorage', e);
+                }
+            }
+            // fallback
+            try { localStorage.setItem(key, json); } catch(e) {}
+            return true;
         }
 
-        // ─── INIT ───────────────────────────────────────
-        function init() {
-            categories = load(CATEGORIES_KEY) || [
-                { id:1, name:'Calçados',   image:'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600&h=800&fit=crop' },
-                { id:2, name:'Acessórios', image:'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=600&h=800&fit=crop' },
-                { id:3, name:'Moda Praia', image:'https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=600&h=800&fit=crop' }
-            ];
-            products = load(PRODUCTS_KEY) || [
-                { id:1, categoryId:1, name:'Sandália Elegance',  description:'Sandália de bico quadrado com detalhes em strass', price:89.90,  sizes:['35','36','37','38','39'], image:'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=500&h=600&fit=crop', badge:'NOVO' },
-                { id:2, categoryId:2, name:'Relógio Premium',    description:'Relógio dourado com acabamento refinado',          price:159.90, sizes:['Único'],                   image:'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=500&h=600&fit=crop', badge:'DESTAQUE' },
-                { id:3, categoryId:1, name:'Chinelo Glam',       description:'Chinelo sofisticado com aplicações de brilho',     price:69.90,  sizes:['35','36','37','38','39'], image:'https://images.unsplash.com/photo-1560343090-f0409e92791a?w=500&h=600&fit=crop', badge:'' }
-            ];
-            save(CATEGORIES_KEY, categories);
-            save(PRODUCTS_KEY, products);
+        async function dbLoad(key) {
+            if (useSharedStorage) {
+                try {
+                    var result = await window.storage.get(key, true); // true = shared
+                    if (result && result.value) return JSON.parse(result.value);
+                } catch(e) {
+                    console.warn('shared storage load failed, fallback localStorage', e);
+                }
+            }
+            // fallback localStorage
+            var raw = localStorage.getItem(key);
+            if (raw) { try { return JSON.parse(raw); } catch(e) {} }
+            return null;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        //  DEFAULTS
+        // ═══════════════════════════════════════════════════════
+        var DEFAULT_CATEGORIES = [
+            { id:1, name:'Calçados',   image:'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=600&h=800&fit=crop' },
+            { id:2, name:'Acessórios', image:'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=600&h=800&fit=crop' },
+            { id:3, name:'Moda Praia', image:'https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=600&h=800&fit=crop' }
+        ];
+        var DEFAULT_PRODUCTS = [
+            { id:1, categoryId:1, name:'Sandália Elegance',  description:'Sandália de bico quadrado com detalhes em strass', price:89.90,  sizes:['35','36','37','38','39'], image:'https://images.unsplash.com/photo-1543163521-1bf539c55dd2?w=500&h=600&fit=crop', badge:'NOVO' },
+            { id:2, categoryId:2, name:'Relógio Premium',    description:'Relógio dourado com acabamento refinado',          price:159.90, sizes:['Único'],                   image:'https://images.unsplash.com/photo-1523170335258-f5ed11844a49?w=500&h=600&fit=crop', badge:'DESTAQUE' },
+            { id:3, categoryId:1, name:'Chinelo Glam',       description:'Chinelo sofisticado com aplicações de brilho',     price:69.90,  sizes:['35','36','37','38','39'], image:'https://images.unsplash.com/photo-1560343090-f0409e92791a?w=500&h=600&fit=crop', badge:'' }
+        ];
+
+        // ═══════════════════════════════════════════════════════
+        //  INIT
+        // ═══════════════════════════════════════════════════════
+        async function init() {
+            // Mostra loading enquanto busca dados
+            document.getElementById('categoriesGrid').innerHTML =
+                '<div class="empty-state"><h3 style="color:#E89BA8">Carregando...</h3></div>';
+
+            categories = await dbLoad(CATEGORIES_KEY);
+            products   = await dbLoad(PRODUCTS_KEY);
+
+            // Se não tem dados ainda, salva os defaults (primeira vez)
+            if (!categories) {
+                categories = DEFAULT_CATEGORIES;
+                await dbSave(CATEGORIES_KEY, categories);
+            }
+            if (!products) {
+                products = DEFAULT_PRODUCTS;
+                await dbSave(PRODUCTS_KEY, products);
+            }
+
             renderCategories();
             checkAdminURL();
         }
 
-        // ─── LINK SECRETO ───────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  LINK SECRETO
+        // ═══════════════════════════════════════════════════════
         function checkAdminURL() {
             var params = new URLSearchParams(window.location.search);
             if (params.get('admin') === ADMIN_SECRET) {
@@ -1107,13 +1161,15 @@
             }
         }
 
-        // ─── IMAGE UPLOAD ───────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  IMAGE UPLOAD
+        // ═══════════════════════════════════════════════════════
         function previewImage(input, containerId) {
             var file = input.files[0];
             if (!file) return;
             var reader = new FileReader();
             reader.onload = function(ev) {
-                document.getElementById(containerId + 'Img').src = ev.target.result;
+                document.getElementById(containerId + 'Img').setAttribute('src', ev.target.result);
                 document.getElementById(containerId).classList.remove('hidden');
             };
             reader.readAsDataURL(file);
@@ -1125,11 +1181,9 @@
             document.getElementById(inputId).value = '';
         }
 
-        // Retorna o src da imagem ou string vazia
         function getPreviewSrc(containerId) {
             var img = document.getElementById(containerId + 'Img');
-            var src = img ? img.getAttribute('src') : '';
-            return src || '';
+            return img ? (img.getAttribute('src') || '') : '';
         }
 
         function setupDragDrop(areaId, inputId, containerId) {
@@ -1142,14 +1196,15 @@
                 e.preventDefault(); area.classList.remove('dragover');
                 var f = e.dataTransfer.files[0];
                 if (f && f.type.startsWith('image/')) {
-                    var dt = new DataTransfer(); dt.items.add(f);
-                    input.files = dt.files;
+                    try { var dt = new DataTransfer(); dt.items.add(f); input.files = dt.files; } catch(x) { input.files = e.dataTransfer.files; }
                     previewImage(input, containerId);
                 }
             });
         }
 
-        // ─── RENDER PÚBLICO ─────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  RENDER PÚBLICO
+        // ═══════════════════════════════════════════════════════
         function renderCategories() {
             var grid = document.getElementById('categoriesGrid');
             if (!categories.length) { grid.innerHTML = '<div class="empty-state"><h3>Nenhuma categoria criada</h3></div>'; return; }
@@ -1201,6 +1256,8 @@
         function showHome() {
             document.getElementById('homeView').classList.remove('hidden');
             document.getElementById('productsView').classList.add('hidden');
+            // Re-renderiza categorias ao voltar (pega dados frescos da memória)
+            renderCategories();
         }
 
         function sendWhatsApp(name, price) {
@@ -1208,7 +1265,9 @@
             window.open('https://wa.me/'+WHATSAPP_NUMBER+'?text='+encodeURIComponent(msg), '_blank');
         }
 
-        // ─── LOGIN ──────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  LOGIN
+        // ═══════════════════════════════════════════════════════
         function showLoginModal() { document.getElementById('loginModal').style.display = 'block'; }
 
         function handleLogin(e) {
@@ -1220,12 +1279,20 @@
             } else { alert('Usuário ou senha incorretos!'); }
         }
 
-        // ─── ADMIN ──────────────────────────────────────
-        function showAdminPanel() {
+        // ═══════════════════════════════════════════════════════
+        //  ADMIN PANEL
+        // ═══════════════════════════════════════════════════════
+        async function showAdminPanel() {
             document.getElementById('homeView').classList.add('hidden');
             document.getElementById('productsView').classList.add('hidden');
             document.getElementById('adminPanel').classList.remove('hidden');
-            // Recarrega produtos da memória (sempre atualizado)
+
+            // Sempre recarrega dados do storage compartilhado ao abrir admin
+            var freshCats = await dbLoad(CATEGORIES_KEY);
+            var freshProds = await dbLoad(PRODUCTS_KEY);
+            if (freshCats) categories = freshCats;
+            if (freshProds) products  = freshProds;
+
             renderAdminProducts();
             renderAdminCategories();
             updateCategorySelect();
@@ -1254,7 +1321,9 @@
             sel.innerHTML = h;
         }
 
-        // ─── RENDER ADMIN ───────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  RENDER ADMIN
+        // ═══════════════════════════════════════════════════════
         function renderAdminProducts() {
             var el = document.getElementById('adminProductList');
             if (!products.length) { el.innerHTML = '<div class="empty-state"><h3>Nenhum produto cadastrado</h3></div>'; return; }
@@ -1290,7 +1359,9 @@
             el.innerHTML = h;
         }
 
-        // ─── PRODUTO CRUD ───────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  PRODUTO CRUD
+        // ═══════════════════════════════════════════════════════
         function showAddProductModal() {
             document.getElementById('productModalTitle').textContent = 'Adicionar Produto';
             document.getElementById('editProductId').value = '';
@@ -1315,17 +1386,23 @@
             document.getElementById('productPrice').value    = p.price;
             document.getElementById('productSizes').value    = p.sizes.join(', ');
             document.getElementById('productBadge').value    = p.badge || '';
+            // Mostra a imagem atual no preview
             document.getElementById('productImagePreviewImg').setAttribute('src', p.image);
             document.getElementById('productImagePreview').classList.remove('hidden');
             document.getElementById('productModal').style.display = 'block';
         }
 
-        function handleProductSubmit(e) {
+        async function handleProductSubmit(e) {
             e.preventDefault();
+
             var idRaw  = document.getElementById('editProductId').value;
             var imgSrc = getPreviewSrc('productImagePreview');
-
             if (!imgSrc) { alert('Por favor, adicione uma imagem do produto.'); return; }
+
+            // Desativa botão durante salvamento
+            var btn = e.target.querySelector('.btn-primary');
+            btn.disabled = true;
+            btn.textContent = 'Salvando...';
 
             var data = {
                 categoryId:  parseInt(document.getElementById('productCategory').value),
@@ -1338,36 +1415,42 @@
             };
 
             if (idRaw) {
-                // Editar
                 var numId = parseInt(idRaw);
                 for (var i = 0; i < products.length; i++) {
                     if (products[i].id === numId) {
-                        products[i] = { id: numId, categoryId: data.categoryId, name: data.name, description: data.description, price: data.price, sizes: data.sizes, image: data.image, badge: data.badge };
+                        products[i] = { id:numId, categoryId:data.categoryId, name:data.name, description:data.description, price:data.price, sizes:data.sizes, image:data.image, badge:data.badge };
                         break;
                     }
                 }
             } else {
-                // Novo
                 data.id = Date.now();
                 products.push(data);
             }
 
-            // Salva + atualiza tela + fecha modal — sempre executa, sem condicional
-            save(PRODUCTS_KEY, products);
+            // Salva no storage compartilhado
+            await dbSave(PRODUCTS_KEY, products);
+
+            // Atualiza tela
             renderCategories();
             renderAdminProducts();
             closeModal('productModal');
+
+            // Re-habilita botão (caso modal ainda estivesse aberto)
+            btn.disabled = false;
+            btn.textContent = 'Salvar Produto';
         }
 
-        function deleteProduct(id) {
+        async function deleteProduct(id) {
             if (!confirm('Excluir este produto?')) return;
             products = products.filter(function(p){ return p.id !== id; });
-            save(PRODUCTS_KEY, products);
+            await dbSave(PRODUCTS_KEY, products);
             renderCategories();
             renderAdminProducts();
         }
 
-        // ─── CATEGORIA CRUD ─────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  CATEGORIA CRUD
+        // ═══════════════════════════════════════════════════════
         function showAddCategoryModal() {
             document.getElementById('categoryModalTitle').textContent = 'Adicionar Categoria';
             document.getElementById('editCategoryId').value = '';
@@ -1382,17 +1465,22 @@
             document.getElementById('categoryModalTitle').textContent = 'Editar Categoria';
             document.getElementById('editCategoryId').value = String(c.id);
             document.getElementById('categoryName').value   = c.name;
+            // Mostra imagem atual no preview
             document.getElementById('categoryImagePreviewImg').setAttribute('src', c.image);
             document.getElementById('categoryImagePreview').classList.remove('hidden');
             document.getElementById('categoryModal').style.display = 'block';
         }
 
-        function handleCategorySubmit(e) {
+        async function handleCategorySubmit(e) {
             e.preventDefault();
+
             var idRaw  = document.getElementById('editCategoryId').value;
             var imgSrc = getPreviewSrc('categoryImagePreview');
-
             if (!imgSrc) { alert('Por favor, adicione uma imagem da categoria.'); return; }
+
+            var btn = e.target.querySelector('.btn-primary');
+            btn.disabled = true;
+            btn.textContent = 'Salvando...';
 
             var data = {
                 name:  document.getElementById('categoryName').value,
@@ -1409,35 +1497,41 @@
                 categories.push(data);
             }
 
-            save(CATEGORIES_KEY, categories);
+            await dbSave(CATEGORIES_KEY, categories);
             renderCategories();
             renderAdminCategories();
             updateCategorySelect();
             closeModal('categoryModal');
+
+            btn.disabled = false;
+            btn.textContent = 'Salvar Categoria';
         }
 
-        function deleteCategory(id) {
+        async function deleteCategory(id) {
             var count = 0; products.forEach(function(p){ if(p.categoryId===id) count++; });
             if (count > 0) { alert('Essa categoria tem '+count+' produto(s). Remova-os primeiro.'); return; }
             if (!confirm('Excluir esta categoria?')) return;
             categories = categories.filter(function(c){ return c.id !== id; });
-            save(CATEGORIES_KEY, categories);
+            await dbSave(CATEGORIES_KEY, categories);
             renderCategories();
             renderAdminCategories();
             updateCategorySelect();
         }
 
-        // ─── MODAL ──────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  MODAL
+        // ═══════════════════════════════════════════════════════
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-        // Fecha modal apenas se o click foi DIRETAMENTE no backdrop (não em filho)
         document.addEventListener('click', function(e) {
             if (e.target.classList && e.target.classList.contains('modal')) {
                 e.target.style.display = 'none';
             }
         });
 
-        // ─── EXPÕE NO GLOBAL (para chamadas inline no HTML) ──
+        // ═══════════════════════════════════════════════════════
+        //  EXPÕE FUNÇÕES NO GLOBAL
+        // ═══════════════════════════════════════════════════════
         window.showHome             = showHome;
         window.showCategory         = showCategory;
         window.sendWhatsApp         = sendWhatsApp;
@@ -1457,7 +1551,9 @@
         window.previewImage         = previewImage;
         window.removePreview        = removePreview;
 
-        // ─── GO ─────────────────────────────────────────
+        // ═══════════════════════════════════════════════════════
+        //  GO
+        // ═══════════════════════════════════════════════════════
         init();
     })();
     </script>
