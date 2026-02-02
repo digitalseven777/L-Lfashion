@@ -1056,14 +1056,31 @@
         </div>
     </div>
 
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
     <script>
     (function() {
+        // ═══════════════════════════════════════════════════════
+        //  FIREBASE CONFIG
+        // ═══════════════════════════════════════════════════════
+        const firebaseConfig = {
+            apiKey: "AIzaSyBTK7BlmKLHxY2QfCnexnjRqCOm6NfFBMI",
+            authDomain: "llfashion.firebaseapp.com",
+            projectId: "llfashion",
+            storageBucket: "llfashion.firebasestorage.app",
+            messagingSenderId: "638690460669",
+            appId: "1:638690460669:web:cc493e0468bd6d8572cf94"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        var db = firebase.firestore();
+
         // ═══════════════════════════════════════════════════════
         //  CONFIG
         // ═══════════════════════════════════════════════════════
         var WHATSAPP_NUMBER = '5511988834177';
-        var PRODUCTS_KEY    = 'll-products';
-        var CATEGORIES_KEY  = 'll-categories';
         var ADMIN_SECRET    = 'lladmin2026';
         var ADMIN_USER      = 'admin';
         var ADMIN_PASS      = 'llfashion2026';
@@ -1075,39 +1092,51 @@
         var categories = [];
 
         // ═══════════════════════════════════════════════════════
-        //  STORAGE — compartilhado entre todos os dispositivos
-        //  Usa window.storage(shared:true) quando disponível (ambiente Claude)
-        //  Faz fallback para localStorage quando não (arquivo local)
+        //  FIRESTORE — banco compartilhado entre TODOS os dispositivos
         // ═══════════════════════════════════════════════════════
-        var useSharedStorage = (typeof window.storage !== 'undefined');
-
-        async function dbSave(key, data) {
-            var json = JSON.stringify(data);
-            if (useSharedStorage) {
-                try {
-                    await window.storage.set(key, json, true); // true = shared
-                    return true;
-                } catch(e) {
-                    console.warn('shared storage save failed, fallback localStorage', e);
-                }
+        async function dbSaveProducts(data) {
+            try {
+                await db.collection('llfashion').doc('products').set({ items: data });
+                return true;
+            } catch(e) {
+                console.error('Erro ao salvar produtos:', e);
+                alert('Erro ao salvar. Verifique sua conexão.');
+                return false;
             }
-            // fallback
-            try { localStorage.setItem(key, json); } catch(e) {}
-            return true;
         }
 
-        async function dbLoad(key) {
-            if (useSharedStorage) {
-                try {
-                    var result = await window.storage.get(key, true); // true = shared
-                    if (result && result.value) return JSON.parse(result.value);
-                } catch(e) {
-                    console.warn('shared storage load failed, fallback localStorage', e);
-                }
+        async function dbSaveCategories(data) {
+            try {
+                await db.collection('llfashion').doc('categories').set({ items: data });
+                return true;
+            } catch(e) {
+                console.error('Erro ao salvar categorias:', e);
+                alert('Erro ao salvar. Verifique sua conexão.');
+                return false;
             }
-            // fallback localStorage
-            var raw = localStorage.getItem(key);
-            if (raw) { try { return JSON.parse(raw); } catch(e) {} }
+        }
+
+        async function dbLoadProducts() {
+            try {
+                var doc = await db.collection('llfashion').doc('products').get();
+                if (doc.exists && doc.data().items) {
+                    return doc.data().items;
+                }
+            } catch(e) {
+                console.error('Erro ao carregar produtos:', e);
+            }
+            return null;
+        }
+
+        async function dbLoadCategories() {
+            try {
+                var doc = await db.collection('llfashion').doc('categories').get();
+                if (doc.exists && doc.data().items) {
+                    return doc.data().items;
+                }
+            } catch(e) {
+                console.error('Erro ao carregar categorias:', e);
+            }
             return null;
         }
 
@@ -1129,21 +1158,19 @@
         //  INIT
         // ═══════════════════════════════════════════════════════
         async function init() {
-            // Mostra loading enquanto busca dados
             document.getElementById('categoriesGrid').innerHTML =
-                '<div class="empty-state"><h3 style="color:#E89BA8">Carregando...</h3></div>';
+                '<div class="empty-state"><h3 style="color:#E89BA8">🔄 Carregando dados...</h3></div>';
 
-            categories = await dbLoad(CATEGORIES_KEY);
-            products   = await dbLoad(PRODUCTS_KEY);
+            categories = await dbLoadCategories();
+            products   = await dbLoadProducts();
 
-            // Se não tem dados ainda, salva os defaults (primeira vez)
             if (!categories) {
                 categories = DEFAULT_CATEGORIES;
-                await dbSave(CATEGORIES_KEY, categories);
+                await dbSaveCategories(categories);
             }
             if (!products) {
                 products = DEFAULT_PRODUCTS;
-                await dbSave(PRODUCTS_KEY, products);
+                await dbSaveProducts(products);
             }
 
             renderCategories();
@@ -1167,6 +1194,14 @@
         function previewImage(input, containerId) {
             var file = input.files[0];
             if (!file) return;
+            
+            // Limita tamanho da imagem para não sobrecarregar o Firestore
+            if (file.size > 500000) { // 500KB
+                alert('Imagem muito grande! Por favor, escolha uma imagem menor que 500KB.');
+                input.value = '';
+                return;
+            }
+            
             var reader = new FileReader();
             reader.onload = function(ev) {
                 document.getElementById(containerId + 'Img').setAttribute('src', ev.target.result);
@@ -1256,7 +1291,6 @@
         function showHome() {
             document.getElementById('homeView').classList.remove('hidden');
             document.getElementById('productsView').classList.add('hidden');
-            // Re-renderiza categorias ao voltar (pega dados frescos da memória)
             renderCategories();
         }
 
@@ -1287,9 +1321,9 @@
             document.getElementById('productsView').classList.add('hidden');
             document.getElementById('adminPanel').classList.remove('hidden');
 
-            // Sempre recarrega dados do storage compartilhado ao abrir admin
-            var freshCats = await dbLoad(CATEGORIES_KEY);
-            var freshProds = await dbLoad(PRODUCTS_KEY);
+            // Recarrega dados frescos do Firebase
+            var freshCats = await dbLoadCategories();
+            var freshProds = await dbLoadProducts();
             if (freshCats) categories = freshCats;
             if (freshProds) products  = freshProds;
 
@@ -1386,7 +1420,6 @@
             document.getElementById('productPrice').value    = p.price;
             document.getElementById('productSizes').value    = p.sizes.join(', ');
             document.getElementById('productBadge').value    = p.badge || '';
-            // Mostra a imagem atual no preview
             document.getElementById('productImagePreviewImg').setAttribute('src', p.image);
             document.getElementById('productImagePreview').classList.remove('hidden');
             document.getElementById('productModal').style.display = 'block';
@@ -1399,10 +1432,9 @@
             var imgSrc = getPreviewSrc('productImagePreview');
             if (!imgSrc) { alert('Por favor, adicione uma imagem do produto.'); return; }
 
-            // Desativa botão durante salvamento
             var btn = e.target.querySelector('.btn-primary');
             btn.disabled = true;
-            btn.textContent = 'Salvando...';
+            btn.textContent = '💾 Salvando...';
 
             var data = {
                 categoryId:  parseInt(document.getElementById('productCategory').value),
@@ -1427,15 +1459,13 @@
                 products.push(data);
             }
 
-            // Salva no storage compartilhado
-            await dbSave(PRODUCTS_KEY, products);
+            var success = await dbSaveProducts(products);
+            if (success) {
+                renderCategories();
+                renderAdminProducts();
+                closeModal('productModal');
+            }
 
-            // Atualiza tela
-            renderCategories();
-            renderAdminProducts();
-            closeModal('productModal');
-
-            // Re-habilita botão (caso modal ainda estivesse aberto)
             btn.disabled = false;
             btn.textContent = 'Salvar Produto';
         }
@@ -1443,7 +1473,7 @@
         async function deleteProduct(id) {
             if (!confirm('Excluir este produto?')) return;
             products = products.filter(function(p){ return p.id !== id; });
-            await dbSave(PRODUCTS_KEY, products);
+            await dbSaveProducts(products);
             renderCategories();
             renderAdminProducts();
         }
@@ -1465,7 +1495,6 @@
             document.getElementById('categoryModalTitle').textContent = 'Editar Categoria';
             document.getElementById('editCategoryId').value = String(c.id);
             document.getElementById('categoryName').value   = c.name;
-            // Mostra imagem atual no preview
             document.getElementById('categoryImagePreviewImg').setAttribute('src', c.image);
             document.getElementById('categoryImagePreview').classList.remove('hidden');
             document.getElementById('categoryModal').style.display = 'block';
@@ -1480,7 +1509,7 @@
 
             var btn = e.target.querySelector('.btn-primary');
             btn.disabled = true;
-            btn.textContent = 'Salvando...';
+            btn.textContent = '💾 Salvando...';
 
             var data = {
                 name:  document.getElementById('categoryName').value,
@@ -1497,11 +1526,13 @@
                 categories.push(data);
             }
 
-            await dbSave(CATEGORIES_KEY, categories);
-            renderCategories();
-            renderAdminCategories();
-            updateCategorySelect();
-            closeModal('categoryModal');
+            var success = await dbSaveCategories(categories);
+            if (success) {
+                renderCategories();
+                renderAdminCategories();
+                updateCategorySelect();
+                closeModal('categoryModal');
+            }
 
             btn.disabled = false;
             btn.textContent = 'Salvar Categoria';
@@ -1512,7 +1543,7 @@
             if (count > 0) { alert('Essa categoria tem '+count+' produto(s). Remova-os primeiro.'); return; }
             if (!confirm('Excluir esta categoria?')) return;
             categories = categories.filter(function(c){ return c.id !== id; });
-            await dbSave(CATEGORIES_KEY, categories);
+            await dbSaveCategories(categories);
             renderCategories();
             renderAdminCategories();
             updateCategorySelect();
